@@ -15,13 +15,11 @@ pip install -r requirements.txt
 ## Rosetta data preparation
 
 There are two procedure to get the Rosetta scores:
-1. **[FastRelax](https://github.com/SBarethiya/VEP/tree/main/Rosetta/FastRelax)**
-2. **[PackRotamer](https://github.com/SBarethiya/VEP/tree/main/Rosetta/PackRotamerMover)**
+1. **[FastRelax](https://github.com/SBarethiya/VEP/tree/main/Rosetta/FastRelax)**: [Rosetta installation](https://docs.rosettacommons.org/demos/latest/tutorials/install_build/install_build)
 
-[PyRosetta installation](https://www.pyrosetta.org/downloads#h.ydwwhv85t3cc) 
-[Rosetta installation](https://docs.rosettacommons.org/demos/latest/tutorials/install_build/install_build)
+2. **[PackRotamer](https://github.com/SBarethiya/VEP/tree/main/Rosetta/PackRotamerMover)**: [PyRosetta installation](https://www.pyrosetta.org/downloads#h.ydwwhv85t3cc) 
 
-This repository contains script for these two procedure see in [Rosetta](https://github.com/SBarethiya/VEP/tree/main/Rosetta)
+Please check [Rosetta](https://github.com/SBarethiya/VEP/tree/main/Rosetta) contains script for these two procedure.
 
 ## Acknowledgment
 The code is adapted from the [nn4dms](https://github.com/gitter-lab/nn4dms) developed by the Gitter Lab. 
