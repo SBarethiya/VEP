@@ -14,8 +14,7 @@ import multiprocessing as mp
 import time
 init()
 
-from additional_scripts import*
-from additional_scripts import predict_ddG
+import predict_ddG
 
 
 # Ref2015 score function
