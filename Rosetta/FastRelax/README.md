@@ -1,4 +1,4 @@
-# PyRosetta Variant List Creation and Relaxation Procedure
+# PyRosetta Variant List Creation and  FastRelax Procedure
 
 This document outlines the steps to generate a variant list using PyRosetta, relax the structure, and run the `ddG_calculation.py` script with the lowest energy pose.
 
@@ -8,18 +8,18 @@ This document outlines the steps to generate a variant list using PyRosetta, rel
 To create a variant list for a given structure, use the following PyRosetta script:
 
 ```bash
-python variant_file.py structure.pdb
+python variant_file.py --pdb_file test.pdb --output_file varaint.txt --target_chain A --offset 0
 ```
 
-###  2. Relax the Structure
+###  2. Relax the Structure N (preferably 5) times
 
 ``` Run in command line
-$ROSETTA_BIN/relax.default.linuxgccrelease -s your_PDB.pdb -restore_talaris_behavior -nstruct 2 -relax:default_repeats 5 -out:path:pdb .
+$ROSETTA_BIN/relax.default.linuxgccrelease -s test.pdb -restore_talaris_behavior -nstruct 2 -relax:default_repeats 5 -out:path:pdb .
 ```
 
 ### 3. Create variant file using variant_file.py
 ``` 
-python variant_file.py pdb_file variant_file_name
+python variant_file.py --pdb_file test.pdb --output_file varaint.txt --target_chain A --offset 0
 ```
 
 ### 4. Calculate the Rosetta ddG score

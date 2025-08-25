@@ -1,44 +1,56 @@
-""" Generates arguments for Rosetta run """
-
 import argparse
 import os
 
+def gen_rosetta_script_xml_str(variant, template_fn, offset, chain):
+    """
+    Generate RosettaScript XML string from mutation variant(s).    
+    Parameters:
+        variant (str): Mutation string, e.g., "A23D,C45K"
+        template_fn (str): Path to the template directory (without filename)
+        offset (int): offset in the residue number.
+        chain (str): do the mutation on which chain.
+    Returns:
+        str: Filled RosettaScript XML string
+    """
 
-def gen_rosetta_script_str(variant, template_fn):
-
-    # for the rosetta script xml, we just need the mutated residue numbers and chain
-    # Note: ROSETTA USES 1-BASED INDEXING
+    # ROSETTA USES 1-BASED INDEXING
     resnums = []
     for mutation in variant.split(","):
-        resnum_0_idx_raw = int(mutation[1:-1])
-        resnum_0_idx_offset = resnum_0_idx_raw 
-        resnum_1_index = resnum_0_idx_offset + 1
-        resnums.append("{}A".format(resnum_1_index))
-        # resnums.append("{}".format(resnum_1_index))
+        resnum = int(mutation[1:-1])  # middle is the residue number
+        rosetta_idx_offset = resnum + offset  # add offset
+        resnums.append(f"{rosetta_idx_offset}{chain}")  # e.g., 24A
 
     resnum_str = ",".join(resnums)
 
-    # load the template
+    # load the XML template
     with open(f"{template_fn}templates/mutate_template.xml", "r") as f:
         template_str = f.read()
 
     # fill in the template
     formatted_template = template_str.format(resnum_str)
-
     return formatted_template
 
 
-def gen_resfile_str(variant, template_fn):
-    "residue_number chain PIKAA replacement_AA"
+def gen_resfile_str(variant, template_fn, offset, chain):
+    """
+    Generate a Rosetta resfile string from mutation data: residue_number chain PIKAA replacement_AA.
+    Parameters:
+        variant (str): Mutation string like "A23D,C45K"
+        template_fn (str): Path to the folder containing mutation_template.resfile
+        offset (int): offset in the residue number.
+        chain (str): do the mutation on which chain.
+    Returns:
+        str: Filled resfile content
+    """
 
     mutation_strs = []
+
     for mutation in variant.split(","):
-        resnum_0_idx_raw = int(mutation[1:-1])
-        resnum_0_idx_offset = resnum_0_idx_raw
-        resnum_1_index = resnum_0_idx_offset + 1
+        resnum = int(mutation[1:-1])
+        resnum_idx_offset = resnum + offset
         new_aa = mutation[-1]
 
-        mutation_strs.append("{} A PIKAA {}".format(resnum_1_index, new_aa))
+        mutation_strs.append("{} {} PIKAA {}".format(resnum_idx_offset, chain, new_aa))
 
     # add new lines between mutation strs
     mutation_strs = "\n".join(mutation_strs)
@@ -48,44 +60,59 @@ def gen_resfile_str(variant, template_fn):
         template_str = f.read()
 
     formatted_template = template_str.format(mutation_strs)
-
     return formatted_template
 
 
-def gen_rosetta_args(variant, out_dir, files_rose):
+def gen_rosetta_args(variant, output_dir, rosetta_files, offset, chain):
+    """
+    Generate and write RosettaScript XML and resfile based on variant.
 
-    rosetta_script_str = gen_rosetta_script_str(variant, files_rose)
-    resfile_str = gen_resfile_str(variant, files_rose)
+    Parameters:
+        variant (str): Mutation string like "A23D, C45K"
+        output_dir (str): Directory to write output files
+        rosetta_files (str): Path prefix to template files (no trailing slash)
+        offset (int): offset in the residue number.
+        chain (str): do the mutation on which chain.
+    Returns:
+        dict: Paths to generated XML and resfile
+    """
 
-    with open(os.path.join(out_dir, "mutate.xml"), "w") as f:
+    rosetta_script_str = gen_rosetta_script_xml_str(variant, rosetta_files, offset, chain)
+    resfile_str = gen_resfile_str(variant, rosetta_files, offset, chain)
+
+    with open(os.path.join(output_dir, "mutate.xml"), "w") as f:
         f.write(rosetta_script_str)
     
-    with open(os.path.join(out_dir, "mutation.resfile"), "w") as f:
+    with open(os.path.join(output_dir, "mutation.resfile"), "w") as f:
         f.write(resfile_str)
 
 
 def main(args):
-    gen_rosetta_args(args.vid,args.variant, 0, args.out_dir)
+    gen_rosetta_args(args.variant, args.output_dir, args.rosetta_files, args.offset, args.chain_id)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description=__doc__,
+        description="Generate Rosetta resfile and XML for a mutation",
         formatter_class=argparse.RawDescriptionHelpFormatter)
 
-    parser.add_argument("--vid", 
-                        help="the variant for which to generate rosetta args_gb1", 
-                        type=str)
-
     parser.add_argument("--variant",
-                        help="the variant for which to generate rosetta args_gb1",
+                        help="the variant for which to generate rosetta args",
                         type=str)
 
-    parser.add_argument("--out_dir",
+    parser.add_argument("--output_dir",
                         help="the directory in which to save mutation.resfile and mutate.xml",
                         type=str)
 
-    parser.add_argument("--files_rose",
-                        help="the directory in which to save mutation.resfile and mutate.xml",
+    parser.add_argument("--rosetta_files",
+                        help="the directory in which mutation.resfile and mutate.xml exist",
+                        type=str)
+
+    parser.add_argument("--offset",
+                        help="If there is any offset in the residue number",
+                        type=int)
+
+    parser.add_argument("--chain_id",
+                        help="Chain id on which mutation will be done",
                         type=str)
     main(parser.parse_args())
