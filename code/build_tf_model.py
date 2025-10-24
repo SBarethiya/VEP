@@ -1,72 +1,120 @@
 """ builds the tensorflow execution graph for the model by parsing network_specs """
-
-import collections
-from os.path import join, isfile, dirname
+import os, warnings
+warnings.simplefilter(action='ignore', category=DeprecationWarning)
+from os.path import isfile
 import argparse
-import pandas as pd
-import numpy as np
-
 import yaml
 import tensorflow as tf
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
-from my_pipgcn import node_average_gc
 import gen_structure_graph as gsg
 
+def initializer(init, shape):
+    if init == "zero":
+        return tf.zeros(shape)
+
+    elif init == "he":
+        fan_in = np.prod(shape)
+        std = 1 / np.sqrt(fan_in)
+        return tf.random_uniform(shape, minval=-std, maxval=std, dtype=tf.float32)
+
+
+def node_average_gc(inputs, adj_mtx, activation, filters=None, trainable=True):
+    """
+    Implementation of graph convolution operation, modified slightly from the implementation used in
+    Protein Interface Prediction using Graph Convolutional Networks
+    https://github.com/fouticus/pipgcn
+    available under the MIT License, Copyright 2020 Alex Fout
+    param:
+        inputs: input tensor of shape (batch_size, number_of_vertices, encoding_len)
+        adj_mtx: adjacency matrix tensor of shape (number_of_vertices, number_of_vertices)
+        activation: activation function to apply after convolution
+        filters: number of output filters
+        trainable: whether the weights are trainable
+    return:
+        output_signal: output tensor of shape (batch_size, number_of_vertices, filters)
+    """
+    # node_average_gc_dist_thresh
+
+    vertices = inputs  # shape: (batch_size, number_of_vertices, encoding_len)
+    v_shape = vertices.get_shape()
+
+    # create new weights # (v_dims, filters)
+    center_weights = tf.Variable(initializer("he", (v_shape[-1].value, filters)), name="Wc", trainable=trainable)
+    neighbor_weights = tf.Variable(initializer("he", (v_shape[-1].value, filters)), name="Wn", trainable=trainable)
+    bias = tf.Variable(initializer("zero", (filters,)), name="b", trainable=trainable)
+
+    # center signals are simply the center node value times the weight
+    # shape: (batch_size, number_of_vertices, num_filters)
+    center_signals = tf.reshape(tf.matmul(tf.reshape(vertices, (-1, v_shape[-1])),
+                                          center_weights),
+                                (-1, v_shape[1], filters))
+
+    # apply neighbor weight to each neighbor
+    # shape: (batch_size, number_of_vertices, num_filters)
+    neighbor_signals_sep = tf.reshape(tf.matmul(tf.reshape(vertices, (-1, v_shape[-1])), neighbor_weights),
+                                      (-1, v_shape[1], filters))
+
+    # compute full neighbor signals
+    neighbor_signals = tf.divide(tf.matmul(tf.tile(adj_mtx[None], (tf.shape(vertices)[0], 1, 1)),
+                                           neighbor_signals_sep),
+                                 tf.reshape(tf.maximum(tf.constant(1, dtype=tf.float32),
+                                                       tf.reduce_sum(adj_mtx, axis=1)), (-1, 1)))
+
+    # final output signal
+    output_signal = activation(center_signals + neighbor_signals + bias)
+
+    return output_signal
 
 def eval_spec(spec, local_scope):
-    # we can make this a bit safer by making an explicit scope list for eval() that only contains
-    # allowable functions. but, as long as you're not running arbitrary yaml files through this it is fine
+    """
+    Recursively evaluates a specification dictionary, replacing any string that starts with "~" with the result of
+    evaluating the string as a Python expression in the given local scope.
+    param: 
+        spec: specification dictionary, list, or string
+        local_scope: dictionary representing the local scope for evaluation
+    return: 
+        evaluated specification
+    """
     if isinstance(spec, dict):
         return {k: eval_spec(v, local_scope) for k, v in spec.items()}
     elif isinstance(spec, list):
         return [eval_spec(i, local_scope) for i in spec]
-    # string base case
     elif isinstance(spec, str) and spec.startswith("~"):
         return eval(spec[1:], globals(), local_scope)
-    # all other non-iterable types base case
     return spec
 
 
-def bg_inference(net_fn,args, adj_mtx, ph_inputs_dict):
-    """ builds the graph as far as needed to return the tensor that would contain the output predictions """
-
+def bg_inference(net_fn, adj_mtx, ph_inputs_dict):
+    """
+    builds the inference part of the graph by parsing the network specification yaml file
+    param:
+        net_fn: filename of the network specification yaml file
+        args: dictionary of arguments (not used here, but could be useful for custom layer functions)
+        adj_mtx: adjacency matrix tensor for graph convolutional layers (can be None if no graph layers are used)
+        ph_inputs_dict: dictionary of placeholder input tensors
+    return:
+        predictions: output tensor of the network
+    """
     with open(net_fn, "r") as f:
         yml = yaml.safe_load(f)
 
-    # a list to keep track of each layer, starting with the raw sequences input placeholder
     layers = [ph_inputs_dict["raw_seqs"]]
-
     for layer_spec in yml["network"]:
-        # special check for presence of adjacency matrix for graph convolutional layer
         if layer_spec["layer_func"] == "~node_average_gc" and adj_mtx is None:
             raise ValueError("must specify a protein structure graph (adj_mtx) when using a graph convolutional layer")
         
-        # eval the special vars/function names starting with "~"
         parsed_spec = eval_spec(layer_spec, locals())
-
-        # create the layer and add to the list
         layer = parsed_spec["layer_func"](**parsed_spec["arguments"])
-        
-        #Concat all Rosetta scores
-#        if (layer_spec["layer_func"] == "~tf.layers.flatten"):
-#             layers.append(layer)
-#            layer1  =  ph_inputs_dict["ros_score"]
-#            layer2 = tf.concat([layer,layer1],axis=1, name='flatten/Reshape')
-#            layers.append(layer2)
-#
-#        else:
         layers.append(layer)
         
-    # add the final output layer depending on how many tasks we are predicting
-    num_tasks = 1
-    layers.append(tf.layers.dense(layers[-1], units=num_tasks, activation=None, name="output"))
+    layers.append(tf.layers.dense(layers[-1], units=1, activation=None, name="output"))
     predictions = tf.squeeze(layers[-1], axis=1)
     return predictions
 
 
-def bg_loss(args, inf_graph):
+def bg_loss(inf_graph):
     """ builds the graph by adding the required loss ops """
-    # get tensorflow variables from the inference graph and other variables from args
     scores = inf_graph["ph_inputs_dict"]["scores"]
     predictions = inf_graph["predictions"]
     loss = tf.compat.v1.losses.mean_squared_error(labels=scores,
@@ -86,7 +134,6 @@ def bg_training(args, loss):
     global_step = tf.Variable(0, name='global_step', trainable=False)
 
     # Use the optimizer to apply the gradients that minimize the loss
-    # (and also increment the global step counter) as a single training step.
     train_op = optimizer.minimize(loss, global_step=global_step)
 
     return global_step, train_op
@@ -97,7 +144,6 @@ def get_placeholder_inputs(args,data_shape):
     # remove the batch dimension from the data shape (this can be inferred real time and is not needed for
     # constructing the net
     raw_seqs_shape = tuple([None] + list(data_shape[1:]))
-    ddG_shape = tuple([None] + list([1]))
 
     # put all placeholders in a dictionary
     ph_dict = {
@@ -163,19 +209,15 @@ def build_inference_graph(args, encoded_data_shape):
     graph_fn = args["graph_fn"]
     adj_mtx = None
     if isfile(graph_fn):
-        # no need to throw an error if the file isn't found because we aren't sure if there are graph convolutional
-        # layers in this network. An error will be thrown later if there are graph layers and no adj_mtx was specified
         g = gsg.load_graph(graph_fn)
         adj_mtx = gsg.ordered_adjacency_matrix(g)
-        # adjacency matrices will be made part of the actual graph rather than feeding them in with feed_dict
-        # this will make it so there's no need to re-load the adjacency matrices when loading model from checkpoint
         adj_mtx = tf.convert_to_tensor(adj_mtx)
 
     # placeholder for inputs (raw sequences, labels, weights, is_training, etc)
     ph_inputs_dict = get_placeholder_inputs(args, encoded_data_shape)
     
     # build the inference part of the graph that gets the output values from the inputs
-    predictions = bg_inference(args["net_file"], args,adj_mtx, ph_inputs_dict)
+    predictions = bg_inference(args["net_file"], adj_mtx, ph_inputs_dict)
 
     # place all relevant tensorflow variables and ops into a dictionary for passing around to other functions
     inf_graph = {"ph_inputs_dict": ph_inputs_dict,
@@ -192,7 +234,7 @@ def build_training_graph(args, inf_graph):
     summaries_per_epoch, summaries_metrics = bg_summaries(metrics_ph_dict, validation_loss_ph, training_loss_ph)
 
     # op for loss calculation
-    loss = bg_loss(args, inf_graph)
+    loss = bg_loss(inf_graph)
 
     # ops that calculate and apply gradients as well as global step
     global_step, train_op = bg_training(args, loss)
@@ -214,7 +256,16 @@ def build_training_graph(args, inf_graph):
 
 
 def build_graph_from_args_dict(args, encoded_data_shape, reset_graph=True):
-    # if args was processed with argparse, it will be a namespace object, but we are set up to work on a dict
+    """
+    builds the tensorflow execution graph for the model by parsing network_specs
+    param:
+        args: dictionary of arguments
+        encoded_data_shape: shape of the encoded data (including batch dimension)
+        reset_graph: whether to reset the default graph before building
+    return:
+        inf_graph: inference part of the graph
+        train_graph: training part of the graph
+    """
     if isinstance(args, argparse.Namespace):
         args = vars(args)
 

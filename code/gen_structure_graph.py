@@ -1,5 +1,6 @@
 """ Generating structure graphs for graph convolutional neural networks """
 import os
+import argparse
 from os.path import isfile
 from enum import Enum, auto
 
@@ -11,14 +12,12 @@ from biopandas.pdb import PandasPdb
 import constants
 import utils
 
-
 class GraphType(Enum):
     LINEAR = auto()
     COMPLETE = auto()
     DISCONNECTED = auto()
     DIST_THRESH = auto()
     DIST_THRESH_SHUFFLED = auto()
-
 
 def save_graph(g, fn):
     """ Saves graph to file """
@@ -176,25 +175,59 @@ def gen_graph(graph_type, res_dist_mtx, dist_thresh=7, shuffle_seed=7, graph_sav
 
     return g
 
+def gen_all_graphs(selected_ds=None, thresholds=None, graph_types=None, shuffle_seed=7):
+    """Generate all structure graphs for all datasets."""
+    if thresholds is None:
+        thresholds = [4, 5, 6, 7, 8, 9, 10]
+    if graph_types is None:
+        graph_types = [GraphType.DIST_THRESH, ]
 
-def gen_all_graphs():
-    """ generate all structure graphs for all datasets """
-    thresholds = [4, 5, 6, 7, 8, 9, 10]
-    shuffle_seed = 7
-    for ds_name in constants.DATASETS.keys():
+    datasets = selected_ds if selected_ds else constants.DATASETS.keys()
+
+    for ds_name in datasets:
         cbeta_mtx = cbeta_distance_matrix(constants.DATASETS[ds_name]["pdb_fn"])
-        for graph_type in GraphType:
+        for graph_type in graph_types:
             if graph_type in [GraphType.DIST_THRESH, GraphType.DIST_THRESH_SHUFFLED]:
                 for threshold in thresholds:
-                    gen_graph(graph_type, cbeta_mtx, dist_thresh=threshold, shuffle_seed=shuffle_seed,
-                              graph_save_dir="data/{}/graphs".format(ds_name), save=True)
+                    gen_graph(
+                        graph_type, cbeta_mtx,
+                        dist_thresh=threshold,
+                        shuffle_seed=shuffle_seed,
+                        graph_save_dir=f"data/{ds_name}/graphs",
+                        save=True
+                    )
             else:
-                gen_graph(graph_type, cbeta_mtx, graph_save_dir="data/{}/graphs".format(ds_name), save=True)
+                gen_graph(
+                    graph_type, cbeta_mtx,
+                    graph_save_dir=f"data/{ds_name}/graphs",
+                    save=True
+                )
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Generate structure graphs for datasets.")
+    parser.add_argument("--datasets", nargs="+", help="Dataset names to process (default: all).")
+    parser.add_argument("--graph-types", nargs="+", choices=[g.name for g in GraphType], help="Graph types to generate (default: all).")
+    parser.add_argument("--thresholds", nargs="+", type=int, help="Distance thresholds (default: 4–10).")
+    parser.add_argument("--shuffle-seed", type=int, default=7, help="Shuffle seed (default: 7).")
+    return parser.parse_args()
 
 
 def main():
-    gen_all_graphs()
+    args = parse_args()
+
+    graph_types = None
+    if args.graph_types:
+        graph_types = [GraphType[g] for g in args.graph_types]
+
+    gen_all_graphs(
+        selected_ds=args.datasets,
+        graph_types=graph_types,
+        thresholds=args.thresholds,
+        shuffle_seed=args.shuffle_seed
+    )
 
 
 if __name__ == "__main__":
     main()
+

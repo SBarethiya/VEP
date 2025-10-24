@@ -10,7 +10,6 @@ from sklearn.model_selection import train_test_split
 
 import utils
 
-
 logger = logging.getLogger("nn4dms." + __name__)
 logger.setLevel(logging.DEBUG)
 

@@ -50,7 +50,7 @@ def get_parser():
                         default="network_specs/net_lr.yml")
 
     parser.add_argument("--encoding",
-                        help="which data encoding to use",
+                        help="which data encoding to use e.g. one_hot, aa_index, rmsf, rosetta, all. specify multiple",
                         type=str,
                         default="one_hot,aa_index")
 

@@ -1,111 +1,91 @@
 import collections
 import logging
 import os
-import os.path
 from os.path import join, basename, isdir
 import shutil
-import sys
+import sys, random, time
 import tarfile
-import time
-import random
 import matplotlib.pyplot as plt
-
+import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
 import numpy as np
 import pandas as pd
 import tensorflow as tf
+import sklearn.metrics as skm
+import scipy.stats
 
-# mine
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+
+# own modules
 import utils
 import split_dataset as sd
 import encode as enc
 from build_tf_model import build_graph_from_args_dict
 from parse_reg_args import get_parser, save_args
-import metrics
 import constants
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("nn4dms." + __name__)
 logger.setLevel(logging.INFO)
 
-#tf.debugging.set_log_device_placement(False)
+def plot_metric(train_values, val_values, metric_name, save_dir: str):
+    """
+    Plot a training vs validation metric over epochs and save the figure.
 
-def plot_all(train_tr, val_tr, evalu, name):
-    plt.cla()
-    plt.clf()    
-    plt.grid()
-    plt.plot(train_tr)
-    plt.plot(val_tr)
-    plt.title(f'loss')
-    plt.ylabel('loss')
-    plt.xlabel('epoch')
-    plt.legend(['train', 'test'], loc='upper left')
-    plt.savefig(f'{name}/loss.png')
-
-    train_mse = []
-    train_pearsonr = []
-    train_r2 = []
-    train_spearmanr = []
-    test_mse = []
-    test_pearsonr = []
-    test_r2 = []
-    test_spearmanr = []
-    for i in range(0, len(evalu)):
-        evl = evalu[i]
-        a_train = evl["train"]
-        train_mse.append(a_train["mse"])
-        train_pearsonr.append(a_train["pearsonr"])
-        train_r2.append(a_train["r2"])
-#        train_spearmanr(a_train["spearmanr"])
-        a_test = evl["test"]
-        test_mse.append(a_test["mse"])
-        test_pearsonr.append(a_test["pearsonr"])
-        test_r2.append(a_test["r2"])
-#        test_spearmanr(a_test["spearmanr"])
-
-    plt.cla()
-    plt.clf()
-    plt.grid()    
-    plt.plot(train_mse)
-    plt.plot(test_mse)
-    plt.title(f'MSE')
-    plt.ylabel('MSE')
+    Args:
+        train_values: List of training metric values per epoch.
+        val_values: List of validation metric values per epoch.
+        metric_name: Name of the metric (e.g., "loss", "MSE").
+        save_dir: Directory to save the plot.
+    """
+    plt.figure(figsize=(8, 6))
+    plt.plot(train_values, label='Train')
+    plt.plot(val_values, label='Validation')
+    plt.title(metric_name)
     plt.xlabel('Epoch')
-    plt.legend(['train', 'test'], loc='upper left')
-    plt.savefig(f'{name}/mse.png')
+    plt.ylabel(metric_name)
+    plt.grid(True)
+    plt.legend(loc='upper left')
+    plt.tight_layout()
+    plt.savefig(f'{save_dir}/{metric_name.lower()}.png')
+    plt.close()
 
-    plt.cla()
-    plt.clf()
-    plt.grid()    
-    plt.plot(train_pearsonr)
-    plt.plot(test_pearsonr)
-    plt.title(f'Pearsonr')
-    plt.ylabel('Pearsonr')
-    plt.xlabel('Epoch')
-    plt.legend(['train', 'test'], loc='upper left')
-    plt.savefig(f'{name}/pearsonr.png')
+def plot_all(loss_tracker, save_dir: str) -> None:
+    """
+    Plot loss and evaluation metrics (MSE, Pearson r, R2) over epochs.
 
-#    plt.cla()
-#    plt.clf()
-#    plt.grid()
-#    plt.plot(train_spearmanr)
-#    plt.plot(test_spearmanr)
-#    plt.title(f'Spearmanr')
-#    plt.ylabel('Spearmanr')
-#    plt.xlabel('Epoch')
-#    plt.legend(['train', 'test'], loc='upper left')
-#    plt.savefig(f'{name}/spearmanr.png')
+    Args:
+        train_loss: List of training loss per epoch.
+        val_loss: List of validation loss per epoch.
+        evaluations: List of evaluation dictionaries containing 'train' and 'test' metrics.
+        save_dir: Directory to save the plots.
+    """
+    # Plot loss
+    for metric_train, metric_test, name in zip([loss_tracker.train_losses, loss_tracker.train_MSE, loss_tracker.train_pearsonr, loss_tracker.train_r2],
+                                                [loss_tracker.validate_losses, loss_tracker.validate_MSE, loss_tracker.validate_pearsonr, loss_tracker.validate_r2],
+                                                ['loss', 'MSE', 'Pearsonr', 'R2']):
 
-    plt.cla()
-    plt.clf()
-    plt.grid()
-    plt.plot(train_r2)
-    plt.plot(test_r2)
-    plt.title(f'R2')
-    plt.ylabel('R2')
-    plt.xlabel('Epoch')
-    plt.legend(['train', 'test'], loc='upper left')
-    plt.savefig(f'{name}/r2.png')
-    return None
+        plot_metric(metric_train, metric_test, name, save_dir)
+
+def compute_metrics(true_scores, predicted_scores, metrics=("mse", "pearsonr", "r2", "spearmanr")):
+
+    metrics_dict = {}
+    # add scores to evaluation dict
+    metrics_dict["true"] = true_scores
+    metrics_dict["predicted"] = predicted_scores
+
+    # compute requested metrics
+    for metric in metrics:
+        if metric == "mse":
+            metrics_dict["mse"] = skm.mean_squared_error(true_scores, predicted_scores)
+        elif metric == "pearsonr":
+            metrics_dict["pearsonr"] = scipy.stats.pearsonr(true_scores, predicted_scores)[0]
+        elif metric == "spearmanr":
+            metrics_dict["spearmanr"] = scipy.stats.spearmanr(true_scores, predicted_scores)[0]
+        elif metric == "r2":
+            metrics_dict["r2"] = skm.r2_score(true_scores, predicted_scores)
+
+    return metrics_dict
 
 def compute_loss(sess, igraph, tgraph, data, set_name, batch_size):
     """ computes the average loss over all data batches """
@@ -115,7 +95,7 @@ def compute_loss(sess, igraph, tgraph, data, set_name, batch_size):
 
     loss_vals = []
     num_examples_per_batch = []
-    for batch_num, batch_data in enumerate(bg):
+    for batch_data in bg:
         ed_batch, scores_batch = batch_data
         num_examples_per_batch.append(len(scores_batch))
 
@@ -131,7 +111,7 @@ def compute_loss(sess, igraph, tgraph, data, set_name, batch_size):
     return np.average(loss_vals, weights=num_examples_per_batch)
 
 
-def run_eval(sess, args, igraph, tgraph, data, set_name):
+def run_eval(sess, args, igraph, data, set_name):
     """ runs one evaluation against the full epoch of data """
 
     bg = utils.batch_generator((data["encoded_data"][set_name], data["scores"][set_name]),
@@ -159,7 +139,7 @@ def run_eval(sess, args, igraph, tgraph, data, set_name):
         true_scores[start_index:end_index] = sc_batch
     duration = time.time() - start
 
-    evaluation_dict = metrics.compute_metrics(true_scores, predicted_scores)
+    evaluation_dict = compute_metrics(true_scores, predicted_scores)
 
     print("Evaluation ({} set) completed in {:.3} sec.".format(set_name, duration))
 
@@ -176,19 +156,20 @@ def evaluate(sess, args, igraph, tgraph, epoch, data, set_names, summary_writers
     evaluations = {}
 
     for set_name in set_names:
-        evaluations[set_name] = run_eval(sess, args, igraph, tgraph, data, set_name)
+        evaluations[set_name] = run_eval(sess, args, igraph, data, set_name)
 
         # update metrics on tensorboard if this is the train or tune set
         # in future, could add all sets (sure, why not), but would need to make summary writers for all
-        if epoch is not None and (set_name == "train" or set_name == "tune"):
-            metrics_feed_dict = {metrics_ph_dict["mse"]: evaluations[set_name]["mse"],
-                                 metrics_ph_dict["pearsonr"]: evaluations[set_name]["pearsonr"],
-                                 metrics_ph_dict["r2"]: evaluations[set_name]["r2"],
-                                 metrics_ph_dict["spearmanr"]: evaluations[set_name]["spearmanr"]}
-            summary_str = sess.run(summaries_metrics, feed_dict=metrics_feed_dict)
+        if summary_writers is not None:
+            if epoch is not None and (set_name == "train" or set_name == "tune"):
+                metrics_feed_dict = {metrics_ph_dict["mse"]: evaluations[set_name]["mse"],
+                                    metrics_ph_dict["pearsonr"]: evaluations[set_name]["pearsonr"],
+                                    metrics_ph_dict["r2"]: evaluations[set_name]["r2"],
+                                    metrics_ph_dict["spearmanr"]: evaluations[set_name]["spearmanr"]}
+                summary_str = sess.run(summaries_metrics, feed_dict=metrics_feed_dict)
 
-            summary_writers[set_name].add_summary(summary_str, epoch)
-            summary_writers[set_name].flush()
+                summary_writers[set_name].add_summary(summary_str, epoch)
+                summary_writers[set_name].flush()
 
     # now print out the evaluations as a single dataframe
     print("====================")
@@ -263,11 +244,19 @@ def run_training_epoch(sess, args, igraph, tgraph, data, epoch, step_display_int
     return avg_step_duration
 
 
-class LossTracker:
+class Loss_and_MetricsTracker:
     # keep track of loss for early stopping and in general... could probably be implemented a bit better
     epochs = []
     train_losses = []
     validate_losses = []
+    train_MSE = []
+    validate_MSE = []
+    train_pearsonr = []
+    validate_pearsonr = []
+    train_spearmann = []
+    validate_spearmann = []
+    train_r2 = []
+    validate_r2 = []
 
     # keep track of the epoch with the lowest validate loss
     epoch_with_lowest_validate_loss = 1
@@ -313,6 +302,38 @@ class LossTracker:
             return 0
         return self.validate_losses[-2] - self.validate_losses[-1]
 
+    def add_train_MSE(self, epoch, new_train_MSE):
+        self.epochs.append(epoch)
+        self.train_MSE.append(new_train_MSE)
+
+    def add_train_pearsonr(self, epoch, new_train_pearsonr):
+        self.epochs.append(epoch)
+        self.train_pearsonr.append(new_train_pearsonr)
+
+    def add_train_spearmann(self, epoch, new_train_spearmann):
+        self.epochs.append(epoch)
+        self.train_spearmann.append(new_train_spearmann)
+
+    def add_train_r2(self, epoch, new_train_r2):
+        self.epochs.append(epoch)
+        self.train_r2.append(new_train_r2)
+
+    def add_validate_MSE(self, epoch, new_validate_MSE):
+        self.epochs.append(epoch)
+        self.validate_MSE.append(new_validate_MSE)
+
+    def add_validate_pearsonr(self, epoch, new_validate_pearsonr):
+        self.epochs.append(epoch)
+        self.validate_pearsonr.append(new_validate_pearsonr)
+
+    def add_validate_spearmann(self, epoch, new_validate_spearmann):
+        self.epochs.append(epoch)
+        self.validate_spearmann.append(new_validate_spearmann)
+
+    def add_validate_r2(self, epoch, new_validate_r2):
+        self.epochs.append(epoch)
+        self.validate_r2.append(new_validate_r2)
+
 
 def run_training(data, log_dir, args):
 
@@ -325,10 +346,8 @@ def run_training(data, log_dir, args):
 
     # set the encoded data to its own var to make things cleaner
     ed = data['encoded_data']
-    # build tensorflow computation graph -- do not reset the graph (make sure reset_graph=False) because
-    # the tensorflow random seed set above is only for the default graph. if we reset the graph in this function call,
-    # then the random seed will not longer apply 
-    igraph, tgraph = build_graph_from_args_dict(args, encoded_data_shape=ed["train"].shape,reset_graph=False)
+    # build tensorflow computation graph 
+    igraph, tgraph = build_graph_from_args_dict(args, ed["train"].shape, reset_graph=False)
 
     # get the step display interval
     step_display_interval = get_step_display_interval(args, len(ed["train"]))
@@ -347,7 +366,7 @@ def run_training(data, log_dir, args):
         # run the op to initialize the variables
         sess.run(tgraph["init_global"])
 
-        loss_tracker = LossTracker(args.min_loss_decrease)        
+        loss_tracker = Loss_and_MetricsTracker(args.min_loss_decrease)        
         # start the training loop
         logger.info("starting training loop")
         train_tr = []
@@ -372,6 +391,16 @@ def run_training(data, log_dir, args):
             # end of epoch - compute loss on tune set to check for early stopping
             validate_loss = compute_loss(sess, igraph, tgraph, data, "tune", args.batch_size)
             loss_tracker.add_validate_loss(epoch, validate_loss)
+
+            evaluations = evaluate(sess, args, igraph, tgraph, epoch, data, ed.keys(), None)
+            loss_tracker.add_train_MSE(epoch, evaluations["train"]["mse"])
+            loss_tracker.add_validate_MSE(epoch, evaluations["tune"]["mse"])
+            loss_tracker.add_train_pearsonr(epoch, evaluations["train"]["pearsonr"])
+            loss_tracker.add_validate_pearsonr(epoch, evaluations["tune"]["pearsonr"])
+            loss_tracker.add_train_spearmann(epoch, evaluations["train"]["spearmanr"])
+            loss_tracker.add_validate_spearmann(epoch, evaluations["tune"]["spearmanr"])
+            loss_tracker.add_train_r2(epoch, evaluations["train"]["r2"])
+            loss_tracker.add_validate_r2(epoch, evaluations["tune"]["r2"]) 
 
             # duration statistics
             epoch_duration = time.time() - epoch_start_time
@@ -413,7 +442,7 @@ def run_training(data, log_dir, args):
                     if args.compress_everything:
                         compress_everything(log_dir)
             
-                    return evaluations, train_tr, val_tr, evalu
+                    return evaluations, loss_tracker
             # did we meet the stopping criteria?
             met_early_stopping_allowance = loss_tracker.num_epochs_since_lowest_validate_loss == args.early_stopping_allowance
 
@@ -445,7 +474,7 @@ def run_training(data, log_dir, args):
                                      delete_checkpoints=args.delete_checkpoints, compress_checkpoints=False)
                 if args.compress_everything:
                     compress_everything(log_dir)
-                return evaluations, train_tr, val_tr, evalu
+                return evaluations, loss_tracker
 
 
 def clean_up_checkpoints(epoch, best_epoch, log_dir, delete_checkpoints=True, compress_checkpoints=True):
@@ -579,11 +608,16 @@ def log_dir_name(args):
 
 
 def main(args):
-    """ set up params, log dir, splits, encode the data, and run the training """
+    """
+    Main function for training a regression model on DMS data.
+    Args:
+        args: Parsed command-line arguments.
+    """
 
-    logger.info("software version {}".format(utils.__version__))
+    # log the software version
+    # logger.info("software version {}".format(utils.__version__))
 
-    # set up log directory & save the args file to it
+    # create the log directory
     log_dir = log_dir_name(args)
     logger.info("log directory is {}".format(log_dir))
     utils.mkdir(log_dir)
@@ -597,7 +631,7 @@ def main(args):
     logger.info("loading dataset from {}".format(dataset_file))
     ds = utils.load_dataset(ds_fn=dataset_file)
 
-    # load the dataset split or create one
+    # create or load the dataset split
     if args.split_dir != "":
         if isdir(args.split_dir):
             logger.info("loading split from {}".format(args.split_dir))
@@ -616,20 +650,18 @@ def main(args):
         train_data = pd.read_csv(args.train_data_tsv, sep="\t")
         test_data = pd.read_csv(args.test_data_tsv, sep="\t")
 
-        # Optional: wrap in the same `split` format for compatibility with downstream code
         split = {
             'train': train_data,
             'test': test_data,
         }
+
     else:
-        # create a classic train-tune-test split based on the specified args
         logger.info("creating a train/test split with tr={}, tu={}, and te={}, seed={}".format(
             args.train_size, args.tune_size, args.test_size, args.split_rseed
         ))
         split, _ = sd.train_tune_test(ds, train_size=args.train_size, tune_size=args.tune_size,
                                    test_size=args.test_size, rseed=args.split_rseed)
 
-    # error checking for split -- make sure we have a train set
     if "train" not in split:
         raise ValueError("no train set in dataset split. specify a split with a train set to proceed.")
     if "tune" not in split:
@@ -638,13 +670,11 @@ def main(args):
                          "if you dont want a tune set, and instead just prefer to have a train and test set, "
                          "just name your test set as the tune set so it is compatible with the script. ")
 
-    # save the split indices that are going to be used for this model to the log directory for the model
-    # this isn't as good as explicitly saving a split using split_dataset.py because the directory name will
-    # not be informative. todo if loading a split_dir, it would be good to copy over the directory name
+    # save the split to the log dir
     logger.info("backing up split to log dir {}".format(join(log_dir, "split")))
     sd.save_split(split, join(log_dir, "split"))
 
-    # figure out the wt_aa and wt_offset for encoding data
+    # get the wt aa and offset
     if args.dataset_name != "":
         wt_aa = constants.DATASETS[args.dataset_name]["wt_aa"]
         wt_ofs = constants.DATASETS[args.dataset_name]["wt_ofs"]
@@ -652,9 +682,7 @@ def main(args):
         wt_aa = args.wt_aa
         wt_ofs = args.wt_ofs
 
-    # create the dataset dictionary, containing encoded data, scores, etc, based on the splits
-    
-
+    # encode the dataset variants
     logger.info("loading dataset from {}".format(dataset_file))
     data = collections.defaultdict(dict)
     data["ds"] = ds
@@ -662,27 +690,21 @@ def main(args):
     if args.train_data_tsv != "" and args.test_data_tsv != "":
         for set_name, idxs in split.items():
             data["variants"][set_name] = ds.iloc[idxs]["variant"].tolist()
-            # we are using "score" as the default target, but support for multiple scores could be added here
             data["scores"][set_name] = ds.iloc[idxs]["score"].to_numpy()
-            # encode the data
             logger.info("encoding {} set variants using {} encoding".format(set_name, args.encoding))
-            data["encoded_data"][set_name] = enc.encode(encoding=args.encoding, ss_file=args.ss_file, variants=data["variants"][set_name], rmsf_file=args.rmsf_file, rosetta_file=args.rosetta_file, wt_aa=wt_aa, wt_offset=wt_ofs)
+            data["encoded_data"][set_name] = enc.encode(args, encoding=args.encoding, variants=data["variants"][set_name], wt_aa=wt_aa, wt_offset=wt_ofs)
 
     else:
         for set_name, idxs in split.items():
             data["idxs"][set_name] = idxs
             data["variants"][set_name] = ds.iloc[idxs]["variant"].tolist()
-            # we are using "score" as the default target, but support for multiple scores could be added here
             data["scores"][set_name] = ds.iloc[idxs]["score"].to_numpy()
-            # encode the data
             logger.info("encoding {} set variants using {} encoding".format(set_name, args.encoding))
-            data["encoded_data"][set_name] = enc.encode(encoding=args.encoding, ss_file=args.ss_file, variants=data["variants"][set_name], rmsf_file=args.rmsf_file, rosetta_file=args.rosetta_file, wt_aa=wt_aa, wt_offset=wt_ofs)
+            data["encoded_data"][set_name] = enc.encode(args, encoding=args.encoding, variants=data["variants"][set_name], wt_aa=wt_aa, wt_offset=wt_ofs)
     
-#    evaluations, train_analysis, test_analysis = run_training(data, log_dir, args)
-    evaluations, train_analysis, test_analysis, evalu_analysis = run_training(data, log_dir, args)
-
-    plot_all(train_analysis, test_analysis, evalu_analysis, log_dir)
-tf.debugging.set_log_device_placement(True)
+    print("Successfully encoded all dataset variants.")
+    evaluations, loss_tracker = run_training(data, log_dir, args)
+    plot_all(loss_tracker, log_dir)
 
 if __name__ == "__main__":
     parser = get_parser()

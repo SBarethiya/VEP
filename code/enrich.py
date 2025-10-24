@@ -3,45 +3,18 @@ import os
 from os.path import join
 from subprocess import call
 import pandas as pd
-import utils
-
 
 def create_e2_config_file(inp_fn, sel_fn, e2_output_dir, config_file_save_dir):
-    """ create a config file specifying parameters for enrich2 """
-    # text = """{"libraries": [
-    #                {
-    #                  "counts file": "INP_COUNTS_FN", 
-    #                  "identifiers": {
-    #                   "type": "protein",
-    #                   "min count": 100, 
-    #                   "use aligner": false, 
-    #                   "wild type": {
-    #                     "coding": "protein", 
-    #                     "sequence": "MQYKLILNGKTLKGETTTEAVDAATAEKVFKQYANADNGVDGEWTYDDAATKTFTVTE"
-    #                   }
-    #                 }, 
-    #                  "name": "T0", 
-    #                  "report filtered reads": false, 
-    #                  "timepoint": 0
-    #                }, 
-    #                {
-    #                  "counts file": "SEL_COUNTS_FN", 
-    #                  "identifiers": {
-    #                   "type": "protein",
-    #                   "min count": 100, 
-    #                   "use aligner": false, 
-    #                   "wild type": {
-    #                     "coding": "protein", 
-    #                     "sequence": "MQYKLILNGKTLKGETTTEAVDAATAEKVFKQYANADNGVDGEWTYDDAATKTFTVTE"
-    #                   }
-    #                 }, 
-    #                  "name": "T1", 
-    #                  "report filtered reads": false, 
-    #                  "timepoint": 1
-    #                }
-    #              ], 
-    #              "name": "C1", 
-    #              "output directory": "OUTPUT_DIR"}"""
+    """
+    creates an enrich2 config file for a 2 timepoint selection experiment
+    param:
+        inp_fn: filename of the input counts file
+        sel_fn: filename of the selected counts file
+        e2_output_dir: directory where enrich2 will save its output
+        config_file_save_dir: directory where the config file will be saved
+    return:
+        filename of the created config file
+    """
 
     text = """{"libraries": [
                    {
