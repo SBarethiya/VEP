@@ -1,6 +1,5 @@
 # Variant effect predictor (VEP)
 This project integrates biophysics-based features from Rosetta into existing variant effect prediction models to address data scarcity and improve the robustness of mutational impact predictions for mutational and positional extrapolation.
-By combining computational protein modeling with machine learning, VEP enhances predictive performance for protein variant effects.
 
 ## Rosetta data preparation
 
