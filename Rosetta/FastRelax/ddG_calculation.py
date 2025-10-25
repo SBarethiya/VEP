@@ -47,7 +47,8 @@ def calculate_DDG(varaint_index, variant, chain, offset, args):
     relax_save = str(args.save_raw) + str(varaint_index) + "/relax.sh"
     copyComplete("relax.sh", relax_save)
     os.chdir(str(args.save_raw) + str(varaint_index))
-    relax_cmd = str(args.save_raw) + str(varaint_index) + "/relax.sh"
+    relax_cmd = "./relax.sh" # str(args.save_raw) + str(varaint_index) + "/relax.sh"
+    os.chmod("./relax.sh", 0o755) 
 
     # Do the process in parallel
     process = subprocess.Popen(relax_cmd,  shell=True)
@@ -71,14 +72,11 @@ def main(args):
     for batch_start in range(0, len(ids_variants), args.cpu_core):
        end_idx += args.cpu_core
        start_time = time.time()
-
        for j in range(start_idx, end_idx):
-            try:
-                idx, variant, chain, offset = ids_variants[j].split()
-            except ValueError:
-                print(f"Skipping malformed line: {ids_variants[i]}")
+            if j >= (len(ids_variants)):
                 continue
 
+            idx, variant, chain, offset = ids_variants[j].split()
             print(f"Processing: {idx}, {variant} on chain {chain} with offset {offset}")
 
             process = multiprocessing.Process(target=calculate_DDG, args=(idx, variant, chain, offset, args))

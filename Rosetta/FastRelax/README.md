@@ -1,35 +1,47 @@
-# PyRosetta Variant List Creation and  FastRelax Procedure
+# Rosetta Variant List Creation and  FastRelax Procedure
 
-This document outlines the steps to generate a variant list using PyRosetta, relax the structure, and run the `ddG_calculation.py` script with the lowest energy pose.
+Tutourial describes how to generate a variant list using Rosetta, relax a protein structure with FastRelax, and run the `ddG_calculation.py` script on the lowest energy pose.
 
 ## Steps
-
-### 1. Create Variant List
-To create a variant list for a given structure, use the following PyRosetta script:
-
-```bash
-python variant_file.py --pdb_file test.pdb --output_file varaint.txt --target_chain A --offset 0
-```
-
-###  2. Relax the Structure N (preferably 5) times
-
+###  1. Relax the Structure (FastRelax)
+Relax the structure preferably 5 times to obtain energetically favorable conformations:
 ``` Run in command line
-$ROSETTA_BIN/relax.default.linuxgccrelease -s test.pdb -restore_talaris_behavior -nstruct 2 -relax:default_repeats 5 -out:path:pdb .
+$ROSETTA_BIN/relax.default.linuxgccrelease \
+    -s test.pdb \
+    -restore_talaris_behavior \
+    -nstruct 1 \
+    -relax:default_repeats 5 \
+    -out:path:pdb .
 ```
 
-### 3. Create variant file using variant_file.py
+### 2. Generate the Variant File
+Generate a variant list for a given structure using the following PyRosetta script `variant_file.py`:
 ``` 
-python variant_file.py --pdb_file test.pdb --output_file varaint.txt --target_chain A --offset 0
+python variant_file.py --pdb_file test.pdb --output_file variant.txt --target_chain A --offset 0
 ```
 
-### 4. Calculate the Rosetta ddG score
-```
-Before that please change the directories in the the path of Rosetta dir in relax.py, templates/mutate_template.xml and templates/mutation_template.resfile files.
+### 3. Calculate Rosetta ddG score
+Before running, ensure that the paths in the following files are correctly set:
+- `relax.py`
+- `templates/mutate_template.xml`
+- `templates/mutation_template.resfile`
 
-python ddG_calculation.py --pdb_fn structure.pdb --variants_fn variant.txt --save_raw dir_to_save --files_raw rosetta_working_dir/
-
-structure.pdb: lowest energy structure
-variant.txt: list of varaints for the ddG calculation
-dir_to_save: absolute path of the directory where you want to save your data
---files_raw: rosetta_working_dir/
+Then, calculate ddG scores using:
 ```
+python ddG_calculation.py \
+    --pdb_fn test.pdb \
+    --variants_fn variant.txt \
+    --save_raw /absolute/path/to/save \
+    --raw_files /path/to/rosetta_working_dir/
+```
+**Notes**: Use the lowest energy relaxed structure for ddG calculations.
+
+### 4. Combine All Scores into a CSV File
+- To generate a CSV file containing the raw scores from all variants, run:
+    ```
+    ./Combine_outputs.sh FolderName OutputCSVFile
+    ```
+- To generate a CSV file where the scores are subtracted relative to the wild-type, run:
+    ```
+    python combine_substract.py FolderName OutputCSVFile
+    ```

@@ -10,7 +10,7 @@ This file creates the every individual the variant file at every individual resi
 
 amino_acids = ["A", "C", "D", "E", "F", "G", "H", "I", "K", "L", "M", "N", "P", "Q", "R", "S", "T", "V", "W", "Y"]
 
-def main():
+def main(args):
     pdb_file = args.pdb_file
     output_file = args.output_file
     target_chain = args.target_chain
@@ -33,10 +33,9 @@ def main():
                 continue  # Skip self-mutations
 
             # e.g., "24_D" (custom ID), "A24D" (mutation string)
-            id_str = f"{u}"
             mut_str = f"{orig_aa}{pdb_resnum}{new_aa}"
             chain_str = chain
-            variants.append((id_str, mut_str, chain_str, offset))
+            variants.append((mut_str, mut_str, chain_str, offset))
 
     np.savetxt(output_file, np.array(variants), fmt="%s")
 

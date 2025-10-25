@@ -1,5 +1,5 @@
 #!/usr/bin/bash
-export ROSETTA=/path_to_rosetta/rosetta_src_2018.33.60351_bundle/main
+#export ROSETTA=/path_to_rosetta/rosetta_src_2018.33.60351_bundle/main
 export ROSETTA_BIN=$ROSETTA/source/bin
 export ROSETTA_DB=$ROSETTA/database
 

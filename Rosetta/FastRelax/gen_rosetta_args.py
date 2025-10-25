@@ -77,8 +77,8 @@ def gen_rosetta_args(variant, output_dir, rosetta_files, offset, chain):
         dict: Paths to generated XML and resfile
     """
 
-    rosetta_script_str = gen_rosetta_script_xml_str(variant, rosetta_files, offset, chain)
-    resfile_str = gen_resfile_str(variant, rosetta_files, offset, chain)
+    rosetta_script_str = gen_rosetta_script_xml_str(variant, rosetta_files, int(offset), chain)
+    resfile_str = gen_resfile_str(variant, rosetta_files, int(offset), chain)
 
     with open(os.path.join(output_dir, "mutate.xml"), "w") as f:
         f.write(rosetta_script_str)

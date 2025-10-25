@@ -1,55 +1,94 @@
+"""
+Protein Structure Relaxation Script using PyRosetta
+
+This script performs energy minimization (FastRelax) on a protein structure.
+It can either:
+1. Determine an optimal number of iterations (`max_iter`) for relaxation, or
+2. Perform relaxation a fixed number of times with a user-specified `max_iter`.
+
+Usage:
+    python relax.py input_structure.pdb <max_iter>
+
+Arguments:
+    input_structure.pdb : Path to the input PDB file
+    max_iter            : Maximum number of iterations for relaxation
+                          (set to 0 to automatically find optimal max_iter)
+"""
+
+import sys
+import argparse
 from pyrosetta import *
-init()  # Initializes the PyRosetta library
+from rosetta.protocols.relax import FastRelax
 
-from rosetta.protocols import *
-sfxn = get_fa_scorefxn()  # Create a score function object using the default "fa_scorefxn" (full atom scoring function).
+# Initialize PyRosetta
+init()
 
-pdb = sys.argv[1]
-max_iter = sys.argv[2]
-max_iter = int(max_iter)
-print(max_iter)
-lowest_energy_pdb = pdb
-pose = pose_from_pdb(pdb)
-lowest_energy = sfxn.score(pose) 
+# Create the full-atom scoring function
+scorefxn = get_fa_scorefxn()
 
+# Create argument parser
+parser = argparse.ArgumentParser(
+    description="Protein Structure Relaxation using PyRosetta (FastRelax)."
+)
+
+# Add arguments
+parser.add_argument(
+    "input_pdb",
+    type=str,
+    help="Path to the input PDB file to be relaxed."
+)
+parser.add_argument(
+    "max_iter",
+    type=int,
+    help="Maximum number of iterations for relaxation. Set to 0 to automatically find optimal iterations."
+)
+
+# Parse arguments
+args = parser.parse_args()
+input_pdb = args.input_pdb
+max_iter = args.max_iter
+
+# Initialize tracking of lowest energy structure
+pose = pose_from_pdb(input_pdb)
+lowest_energy = scorefxn.score(pose)
+lowest_energy_pdb = input_pdb
+
+# If max_iter is 0, automatically determine optimal iterations
 if max_iter == 0:
-    # To find the maximum number of iteration
-    for i in [100,200,300,400,500]:
-        pose = pose_from_pdb(pdb)
-        # Initialize the FastRelax protocol object, which performs energy minimization to relax the protein structure.
-        fr = rosetta.protocols.relax.FastRelax()
-        # Set the scoring function for the relaxation protocol.
-        fr.set_scorefxn(sfxn)
-        # Set the maximum number of iterations for the relaxation process.
-        fr.max_iter(i)       
-        # Apply the FastRelax protocol to the pose (structure), modifying the pose in place.
-        fr.apply(pose)
-        # Save the relaxed pose as a new PDB file with a unique name based on the iteration number.
-        pose.dump_pdb(f'output_{i}.pdb')
-        if sfxn.score(pose) <= lowest_energy:
+    print("Finding optimal max_iter...")
+    for i in [100, 200, 300, 400, 500]:
+        pose = pose_from_pdb(input_pdb)
+        relax = FastRelax()
+        relax.set_scorefxn(scorefxn)
+        relax.max_iter(i)
+        relax.apply(pose)
+        output_file = f'output_{i}.pdb'
+        pose.dump_pdb(output_file)
+
+        energy = scorefxn.score(pose)
+        if energy <= lowest_energy:
+            lowest_energy = energy
+            lowest_energy_pdb = output_file
             max_iter = i
-            lowest_energy_pdb = f'output_{i}.pdb'
-            lowest_energy = sfxn.score(pose)
 
-# After finding the max_iter, Loop to perform relaxation 4 times
-if max_iter != 0:
-    for i in range(0, 4):
-        # Load the protein structure from the PDB file for each iteration.
-        pose = pose_from_pdb(pdb)
-        # Initialize the FastRelax protocol object, which performs energy minimization to relax the protein structure.
-        fr = rosetta.protocols.relax.FastRelax()
-        # Set the scoring function for the relaxation protocol.
-        fr.set_scorefxn(sfxn)
-        # Set the maximum number of iterations for the relaxation process.
-        fr.max_iter(max_iter)
-        # Apply the FastRelax protocol to the pose (structure), modifying the pose in place.
-        fr.apply(pose)
-        # Save the relaxed pose as a new PDB file with a unique name based on the iteration number.
-        pose.dump_pdb(f'output_{max_iter}_{i}.pdb')
-        pose.dump_pdb(f'output_{max_iter}_{i}.pdb')
-        if sfxn.score(pose) <= lowest_energy:
-            lowest_energy_pdb = f'output_{max_iter}_{i}.pdb'
-            lowest_energy = sfxn.score(pose)
+# Perform relaxation 4 times using determined or provided max_iter
+print(f"Performing relaxation 4 times with max_iter = {max_iter}...")
+for iteration in range(4):
+    pose = pose_from_pdb(input_pdb)
+    relax = FastRelax()
+    relax.set_scorefxn(scorefxn)
+    relax.max_iter(max_iter)
+    relax.apply(pose)
 
-print(f"The lowest energy pose is: {lowest_energy_pdb} with energy: {lowest_energy} and max iteration: {max_iter}")
+    output_file = f'output_{max_iter}_{iteration}.pdb'
+    pose.dump_pdb(output_file)
 
+    energy = scorefxn.score(pose)
+    if energy <= lowest_energy:
+        lowest_energy = energy
+        lowest_energy_pdb = output_file
+
+# Summary
+print(f"\nLowest energy pose: {lowest_energy_pdb}")
+print(f"Energy: {lowest_energy}")
+print(f"Max iterations used: {max_iter}")

@@ -2,28 +2,18 @@ from pyrosetta import *
 from pyrosetta.toolbox import *
 from pyrosetta.teaching import *
 import pandas as pd
-import csv
-import os, sys
-import numpy as np
-#import  aspose.cells
+import sys
 from pyrosetta.rosetta import *
-#from aspose.cells import Workbook
-import re
-from joblib import Parallel, delayed
 import multiprocessing as mp
 import time
-init()
+init("-mute all")
 
-import predict_ddG
-
-
-# Ref2015 score function
+# Ref2015
 sfxn = get_fa_scorefxn()
 
 # 20 canonical amino acids
 amino_acids = ["A", "C", "D", "E", "F", "G", "H", "I", "K", "L", "M", "N", "P", "Q", "R", "S", "T", "V", "W", "Y"]
 
-# Function for prediction of ddG, energy components and labels of components
 def get_energy_components(native_pose, mutated_pose, sfxn):
     """
     Calculate the energy components and ddG of a protein structure before and after a mutation.
@@ -47,8 +37,7 @@ def get_energy_components(native_pose, mutated_pose, sfxn):
     score : float
         The overall ddG score (total energy difference) for the mutated pose versus the native pose.
     """  
-    # Get the total energies for the native pose and mutated pose,
-    # applying the score function (sfxn) weights to the energies.
+    # Get the total energies for the native pose and mutated pose, applying the score function (sfxn) weights to the energies.
     tmp_native = native_pose.energies().total_energies().weighted_string_of(sfxn.weights())
     tmp_mutant = mutated_pose.energies().total_energies().weighted_string_of(sfxn.weights())
 
@@ -68,24 +57,17 @@ def get_energy_components(native_pose, mutated_pose, sfxn):
         if (i % 2 != 0):  # Every second element is an energy score.
             mutant_scores.append(float(array_mutant[i]))
 
-    # Calculate the each energy component by subtracting
-    # native pose scores from the corresponding mutant scores.
+    # Calculate the each energy component by subtracting native pose scores from the corresponding mutant scores.
     ddGs = []
     for i in range(len(mutant_scores)):
         ddG_component = mutant_scores[i] - native_scores[i]  # ddG is the difference in energy components.
         ddGs.append(round(ddG_component, 3))  # Round each ddG component to 3 decimal places.
 
-    # Extract the labels (energy terms) from the native pose energy string (every other element is a label).
-    labels = []
-    for i in range(len(array_native)):
-        if (i % 2 == 0):  # Every other element is a label.
-            labels.append(array_native[i].translate(':').strip(":"))  # Clean up the label text.
-
     # Calculate the total score difference (ddG) for the entire structure.
     native_score = sfxn.score(native_pose)  # Get the total score for the native pose.
     mutant_score = sfxn.score(mutated_pose)  # Get the total score for the mutated pose.
     score = mutant_score - native_score  # ddG for the entire structure is the difference in total scores.
-    return labels, ddGs, score
+    return ddGs, score
 
 def com_split(org_aa, resid_cur, mut_aa, pose):
     """
@@ -116,7 +98,7 @@ def com_split(org_aa, resid_cur, mut_aa, pose):
     pose_mut.assign(pose)
     
     # Mutate the residue at position 'resid_cur' to the original amino acid 'org_aa' (this serves as the reference pose)
-    mutate_residue(pose_ref, resid_cur, org_aa, 12.0, sfxn)
+    mutate_residue(pose_ref, resid_cur, org_aa, 12.0, sfxn) 
     
     # Mutate the residue at position 'resid_cur' to the mutated amino acid 'mut_aa' (this serves as the mutated pose)
     mutate_residue(pose_mut, resid_cur, mut_aa, 12.0, sfxn)
@@ -154,15 +136,14 @@ def worker(i, aa, pose, sfxn, queue):
     pose_ref, pose_mut = com_split(wt, i, aa, pose)
     
     # Get the energy components and ddG values by comparing the reference pose and mutated pose
-    labels, dGs, score_s = get_energy_components(pose_ref, pose_mut, sfxn)
+    dGs, score_s = get_energy_components(pose_ref, pose_mut, sfxn)
     
     # Create a result tuple containing ddG values, overall score difference, and mutation label
     result = (dGs, score_s, wt + str(i) + aa)
     
     # Calculate and print the runtime for this worker function
     run_time = time.time() - start
-    print(f"{i} {aa} {dGs} {score_s} {sfxn(pose_mut)}")
-    print("run_time", i, run_time)
+    print("Total time for mutation", wt + str(i) + aa, run_time)
     
     # Put the result into the queue for later collection
     queue.put(result)
@@ -172,12 +153,10 @@ def main():
     The function reads mutation range and target PDB file, then performs mutations for each residue in the specified range, calculates energy components, and stores the results in a CSV file.
     """
     # Read the start and stop indices for the residue mutation range from bash file arguments
-    start = sys.argv[1]
-    stop = sys.argv[2]
+    start = int(sys.argv[1])
+    stop = int(sys.argv[2])
     file_name = sys.argv[3]
-    print(start, stop)  # Print start and stop values to the console for debugging
-    start = int(start)  # Convert the start index to an integer
-    stop = int(stop)    # Convert the stop index to an integer
+    final_last_residue = int(sys.argv[4])
     
     # Initialize lists to store results
     dG = []  # List to store ddG values (score difference between mutant and native)
@@ -186,19 +165,12 @@ def main():
 
     # Load the PDB file and create a Pose object
     pose = pose_from_pdb(file_name)
-
     # Load the Ref2015 scoring function
     sfxn = get_fa_scorefxn()
-
-    # Calculate the length of the protein sequence for the specified residue range
-    pose_sequence_len = len(pose.sequence()[start:stop])
+    active_terms = [term.name for term in sfxn.get_nonzero_weighted_scoretypes()]
 
     # Generate all possible variants (residue index and amino acid) within the specified range
     variants = [(i, aa) for i in range(start, stop+1, 1) for aa in amino_acids]
-
-    # Assume pose_info and sfxn_info are placeholders for data required to reconstruct the pose and scoring function
-    pose_info = "pose_info_data"  # Placeholder for pose information
-    sfxn_info = "sfxn_info_data"  # Placeholder for scoring function information
 
     # Initialize a queue to collect results from the worker processes
     queue = mp.Queue()
@@ -224,20 +196,20 @@ def main():
         variant_done.append(variant)  # Append the variant identifier to the list
 
     # Prepare the results for saving in CSV format
-    scores = []  # List to store the final result data to be saved
-
-    # Loop through the dG list and create the final output format
+    scores = [] 
     for i in range(0, len(dG), 1):
-        v1 = dG_comp_All[i]  # Individual ddG components for the i-th variant
-        v2 = []  # Temporary list to store data for the i-th variant
-        for j in range(0, len(dG_comp_All[1]), 1):
-            v2.append(v1[j])  # Add each ddG component to the list
-        v2.append(dG[i])  # Add the overall ddG value (score) for this variant
-        v2.append(variant_done[i]) 
-        scores.append(v2)  # Append the result for this variant to the scores list
+        v1 = dG_comp_All[i]  # Get the individual ddG components for the current variant
+        v2 = list(v1) # Convert to list
+        v2.append(dG[i]) # Append the overall ddG score
+        v2.append(variant_done[i]) # Append the mutation label
+        scores.append(v2) # Add the combined data to the scores list
 
     # Save the results as a CSV file without headers and index, appending to an existing file
-    pd.DataFrame(scores).to_csv('ddG_scores.csv', mode='a', header=False, index=False)
+    if start == 1:
+        labels = active_terms + ['ddG', 'Mutation']
+        pd.DataFrame(scores, columns=labels).to_csv('ddG_scores.csv', mode='a', header=True, index=False)
+    else:
+        pd.DataFrame(scores).to_csv('ddG_scores.csv', mode='a', header=False, index=False)
  
 if __name__ == "__main__":
     main()
