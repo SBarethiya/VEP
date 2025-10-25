@@ -1,0 +1,4 @@
+network:
+  - layer_func: ~tf.layers.flatten
+    arguments:
+      inputs: ~layers[-1]

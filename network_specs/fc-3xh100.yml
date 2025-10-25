@@ -1,0 +1,43 @@
+network:
+  - layer_func: ~tf.layers.flatten
+    arguments:
+      inputs: ~layers[-1]
+
+  - layer_func: ~tf.layers.dense
+    arguments:
+      name: dense1
+      inputs: ~layers[-1]
+      units: 100
+      activation: ~tf.nn.leaky_relu
+
+  - layer_func: ~tf.layers.dropout
+    arguments:
+      inputs: ~layers[-1]
+      rate: 0.2
+      training: ~ph_inputs_dict["training"]
+
+  - layer_func: ~tf.layers.dense
+    arguments:
+      name: dense2
+      inputs: ~layers[-1]
+      units: 100
+      activation: ~tf.nn.leaky_relu
+
+  - layer_func: ~tf.layers.dropout
+    arguments:
+      inputs: ~layers[-1]
+      rate: 0.2
+      training: ~ph_inputs_dict["training"]
+
+  - layer_func: ~tf.layers.dense
+    arguments:
+      name: dense3
+      inputs: ~layers[-1]
+      units: 100
+      activation: ~tf.nn.leaky_relu
+
+  - layer_func: ~tf.layers.dropout
+    arguments:
+      inputs: ~layers[-1]
+      rate: 0.2
+      training: ~ph_inputs_dict["training"]

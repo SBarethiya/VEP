@@ -68,6 +68,7 @@ python code/regression.py \
         ```
 4. Train or Fine-tune Models
     - Use the training script with desired dataset and encoding.
+    - A few example network configurations are provided in the `network_specs/` directory. For more examples, refer to [nn4dms](https://github.com/gitter-lab/nn4dms).
 
 ## Acknowledgment
 The code and networks are adapted from [nn4dms](https://github.com/gitter-lab/nn4dms) developed by the Gitter Lab. 
