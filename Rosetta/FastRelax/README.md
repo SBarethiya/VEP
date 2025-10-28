@@ -45,3 +45,7 @@ python ddG_calculation.py \
     ```
     python combine_substract.py FolderName OutputCSVFile
     ```
+
+## Acknowledgment
+The code is based on the [nn4dms](https://github.com/gitter-lab/nn4dms).
+
