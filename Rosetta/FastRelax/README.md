@@ -47,5 +47,4 @@ python ddG_calculation.py \
     ```
 
 ## Acknowledgment
-The code is based on the [nn4dms](https://github.com/gitter-lab/nn4dms).
-
+The code is based on the [nn4dms](https://github.com/gitter-lab/nn4dms) developed by the Gitter Lab.
