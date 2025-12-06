@@ -10,6 +10,7 @@ import networkx as nx
 from biopandas.pdb import PandasPdb
 
 import constants
+import utils
 
 class GraphType(Enum):
     LINEAR = auto()
@@ -169,8 +170,7 @@ def gen_graph(graph_type, res_dist_mtx, dist_thresh=7, shuffle_seed=7, graph_sav
         if isfile(save_fn):
             print("err: graph already exists: {}. to overwrite, delete the existing file first".format(save_fn))
         else:
-            if not isdir(graph_save_dir):
-                os.makedirs(graph_save_dir)
+            utils.mkdir(graph_save_dir)
             save_graph(g, save_fn)
 
     return g

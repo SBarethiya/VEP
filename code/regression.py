@@ -1,7 +1,7 @@
 import collections
 import logging
 import os
-from os.path import join, basename, isdir, isfile, basename
+from os.path import join, basename, isdir
 import shutil
 import sys, random, time
 import tarfile
@@ -17,6 +17,7 @@ import scipy.stats
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 # own modules
+import utils
 import split_dataset as sd
 import encode as enc
 from build_tf_model import build_graph_from_args_dict
@@ -89,7 +90,7 @@ def compute_metrics(true_scores, predicted_scores, metrics=("mse", "pearsonr", "
 def compute_loss(sess, igraph, tgraph, data, set_name, batch_size):
     """ computes the average loss over all data batches """
 
-    bg = batch_generator((data["encoded_data"][set_name], data["scores"][set_name]), batch_size,
+    bg = utils.batch_generator((data["encoded_data"][set_name], data["scores"][set_name]), batch_size,
                                skip_last_batch=False, num_epochs=1, shuffle=False)
 
     loss_vals = []
@@ -109,46 +110,11 @@ def compute_loss(sess, igraph, tgraph, data, set_name, batch_size):
     # return the average loss across each batch
     return np.average(loss_vals, weights=num_examples_per_batch)
 
-def batch_generator(data_arrays, batch_size, skip_last_batch=True, num_epochs=-1, shuffle=True):
-    """ generates batches from given data and labels """
-    epoch = 0
-
-    if len(data_arrays) == 0:
-        raise Exception("No data arrays.")
-
-    data_lens = [len(data_array) for data_array in data_arrays]
-
-    data_len = data_lens[0]
-    batching_data_arrays = data_arrays
-
-    while True:
-        # shuffle the input data for this batch
-        if shuffle:
-            idxs = np.arange(0, data_len)
-            np.random.shuffle(idxs)
-            batching_data_arrays = []
-            for data_array in data_arrays:
-                batching_data_arrays.append(data_array[idxs])
-
-        for batch_idx in range(0, data_len, batch_size):
-            # skip last batch if it is the wrong size
-            if skip_last_batch:
-                if batch_idx + batch_size > data_len:
-                    continue
-            data_batches = []
-            for batching_data_array in batching_data_arrays:
-                data_batches.append(batching_data_array[batch_idx:(batch_idx + batch_size)])
-            yield data_batches
-
-        epoch += 1
-        if epoch == num_epochs:
-            break
-
 
 def run_eval(sess, args, igraph, data, set_name):
     """ runs one evaluation against the full epoch of data """
 
-    bg = batch_generator((data["encoded_data"][set_name], data["scores"][set_name]),
+    bg = utils.batch_generator((data["encoded_data"][set_name], data["scores"][set_name]),
                                args.batch_size, skip_last_batch=False, num_epochs=1, shuffle=False)
 
     # get all the predicted and true labels in batches
@@ -234,7 +200,7 @@ def run_training_epoch(sess, args, igraph, tgraph, data, epoch, step_display_int
     interval_num_examples_per_batch = []
 
     # generate the data batches
-    bg = batch_generator((data["encoded_data"]["train"], data["scores"]["train"]),args.batch_size, skip_last_batch=False, num_epochs=1)
+    bg = utils.batch_generator((data["encoded_data"]["train"], data["scores"]["train"]),args.batch_size, skip_last_batch=False, num_epochs=1)
 
     # loop through each batch of data in this epoch
     for step, batch_data in enumerate(bg):
@@ -597,8 +563,7 @@ def save_metrics_evaluations(evaluations, log_dir, epoch, early, args):
     for set_name, evaluation in evaluations.items():
         # save true scores and actual scores predicted using this model
         out_dir = join(log_dir, "predictions")
-        if not isdir(out_dir):
-            os.makedirs(out_dir)
+        utils.mkdir(out_dir)
         save_scores(evaluation, join(out_dir, set_name))
 
 
@@ -648,11 +613,14 @@ def main(args):
     Args:
         args: Parsed command-line arguments.
     """
+
+    # log the software version
+    # logger.info("software version {}".format(utils.__version__))
+
     # create the log directory
     log_dir = log_dir_name(args)
     logger.info("log directory is {}".format(log_dir))
-    if not isdir(log_dir):
-        os.makedirs(log_dir)
+    utils.mkdir(log_dir)
     save_args(vars(args), join(log_dir, "args.txt"))
 
     # load the dataset
@@ -661,7 +629,7 @@ def main(args):
     else:
         dataset_file = args.dataset_file
     logger.info("loading dataset from {}".format(dataset_file))
-    ds = pd.read_csv(dataset_file, sep="\t")
+    ds = utils.load_dataset(ds_fn=dataset_file)
 
     # create or load the dataset split
     if args.split_dir != "":
