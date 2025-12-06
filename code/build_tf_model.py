@@ -4,6 +4,7 @@ warnings.simplefilter(action='ignore', category=DeprecationWarning)
 from os.path import isfile
 import argparse
 import yaml
+import numpy as np
 import tensorflow as tf
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
