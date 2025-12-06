@@ -8,7 +8,6 @@ import pandas as pd
 from sklearn.preprocessing import OneHotEncoder, MinMaxScaler
 
 import constants
-import utils
 
 def enc_aa_index(int_seqs):
     """
@@ -214,7 +213,8 @@ def encode(args, encoding, char_seqs=None, variants=None, ds_name=None, wt_aa=No
 
 def encode_full_dataset(ds_name, encoding, args):
     # load the dataset
-    ds = utils.load_dataset(ds_name=ds_name)
+    ds_fn = constants.DATASETS[ds_name]["ds_fn"]
+    ds =  pd.read_csv(ds_fn, sep="\t")
     # encode the data
     encoded_data = encode(args, encoding=encoding, variants=ds["variant"].tolist(), ds_name=ds_name)
     return encoded_data

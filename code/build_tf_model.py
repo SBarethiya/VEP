@@ -5,6 +5,7 @@ from os.path import isfile
 import argparse
 import yaml
 import tensorflow as tf
+import numpy as np
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
 
 import gen_structure_graph as gsg

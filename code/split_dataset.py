@@ -8,8 +8,6 @@ import logging
 import numpy as np
 from sklearn.model_selection import train_test_split
 
-import utils
-
 logger = logging.getLogger("nn4dms." + __name__)
 logger.setLevel(logging.DEBUG)
 
@@ -21,14 +19,17 @@ def supertest(ds, size=.1, rseed=8, out_dir=None, overwrite=False):
     idxs, super_test_idxs = train_test_split(idxs, test_size=size)
     save_fn = None
     if out_dir is not None:
-        utils.mkdir(out_dir)
+        if not isdir(out_dir):
+            os.makedirs(out_dir)
         out_fn = "supertest_w{}_s{}_r{}.txt".format(hash_withhold(super_test_idxs), size, rseed)
         save_fn = join(out_dir, out_fn)
         if isfile(save_fn) and not overwrite:
             raise FileExistsError("supertest split already exists: {}".format(join(out_dir, out_fn)))
         else:
             logger.info("saving supertest split to file {}".format(save_fn))
-            utils.save_lines(save_fn, super_test_idxs)
+            with open(save_fn, "w") as f_handle:
+                for line in super_test_idxs:
+                    f_handle.write("{}\n".format(line))
     return np.array(super_test_idxs, dtype=int), save_fn
 
 
@@ -397,10 +398,13 @@ def mutation_split(ds, train_muts_size, tune_size, rseed=8, out_dir=None, overwr
 
 def save_split(split, d):
     """ save a split to a directory """
-    utils.mkdir(d)
+    if not isdir(d):
+        os.makedirs(d)
     for k, v in split.items():
         out_fn = join(d, "{}.txt".format(k))
-        utils.save_lines(out_fn, v)
+        with open(out_fn, "w") as f_handle:
+            for line in v:
+                f_handle.write("{}\n".format(line))
 
 
 def load_single_split_dir(split_dir, content="idxs"):
@@ -413,7 +417,10 @@ def load_single_split_dir(split_dir, content="idxs"):
         if content == "idxs":
             split_data = np.loadtxt(f, delimiter="\n", dtype=int)
         elif content == "txt":
-            split_data = utils.load_lines(f)
+            split_data = []
+            with open(f, "r") as f_handle:
+                for line in f_handle:
+                    split_data.append(line.strip())
         else:
             raise ValueError("unsupported content type for split")
         split[split_name] = split_data

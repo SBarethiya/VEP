@@ -89,8 +89,7 @@ def create_e2_dataset(count_df, output_dir, library_size, output_fn=None):
     # create enrich2 input files
     inp = count_df[["variant", "inp"]]
     sel = count_df[["variant", "sel"]]
-    # inp.index = inp.index.astype(str)
-    # sel.index = sel.index.astype(str)
+
     inp_fn = join(e2_output_dir, "idents_inp.tsv")
     sel_fn = join(e2_output_dir, "idents_sel.tsv")
     
