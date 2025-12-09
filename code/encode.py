@@ -35,10 +35,7 @@ def enc_rmsf(rmsf_file, int_seqs):
     """
     rmsf = pd.read_csv(rmsf_file,sep="\t")
     rmsf = np.array(rmsf["rmsf"])
-    # add all zero features for stop codon
-    rmsf = np.insert(rmsf, 0, np.zeros(rmsf.shape[0]), axis=0)
-    rmsf_enc = rmsf[int_seqs]
-    rmsf_enc = np.expand_dims(rmsf_enc, axis=-1)    
+    rmsf_enc = np.repeat(rmsf[np.newaxis, :, np.newaxis], int_seqs.shape[0], axis=0)
     return rmsf_enc
 
 def enc_ss(ss_file, int_seqs):
